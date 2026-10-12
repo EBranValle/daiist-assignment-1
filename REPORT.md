@@ -9,6 +9,8 @@
 *What is it, where did you get it, what does one row represent, how many
 rows/columns, and why did you pick it.*
 
+A dataset about no-show medical appointments found in Kaggle. A row represents a medical appointment with metadata on patient ID, gender, age, neighbourhood, health details, when the appointment was booked, if an SMS reminder was sent, and wether a patient showed up to their appointment. The dataset has a total of 106,982 rows with 15 columns. No particular reason to specifically pick this dateset, I was browsing kaggle looking in the datasets tab and thought this dataset was interesting to use for the assignment. 
+
 ## Business / real-life framing
 
 *The hypothetical scenario this model serves, and what that scenario implies
