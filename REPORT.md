@@ -4,11 +4,10 @@
 defend any of this without your code in front of you — write only what you
 can actually explain.*
 
-- **Name**:
-- **Student ID**:
-- **Email**:
-- **Group**: [BBADBA 5A | BBADBA 5B | PPLEDBA 5A | BDBA 3A]
-
+- **Name**: Edgar Andres Bran Valle
+- **Student ID**: 18789
+- **Email**: ebran.ieu2022@student.ie.edu
+- **Group**: BBADBA 5B 
 ## Dataset
 
 *What is it, where did you get it, what does one row represent, how many
