@@ -1,9 +1,5 @@
 # Assignment 1 Report
 
-*Delete this italic guidance as you fill in each section. You'll be asked to
-defend any of this without your code in front of you — write only what you
-can actually explain.*
-
 - **Name**: Edgar Andres Bran Valle
 - **Student ID**: 18789
 - **Email**: ebran.ieu2022@student.ie.edu
