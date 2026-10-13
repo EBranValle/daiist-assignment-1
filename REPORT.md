@@ -17,10 +17,18 @@ This model addresses the scenario of the likely probability that a patient shows
 
 ## Data preparation & feature engineering
 
-*What you engineered and why, and any data-quality decisions you made along
-the way — e.g. "segment X had defective data, so I excluded it and used a
-population-average default for scope Y at inference time; the impact of
-that choice is Z."*
+So first, as part of the data cleaning process, I started by removing 5 rows where the booking date was later than the appointment date; for the first feature, it didn't make sense as it would create negative values. I also just corrected some spelling errors in the column names; other than that, there were no NAs. 
+
+Features: All the features were standardised using the training data’s mean and standard deviation only. 
+
+1.) Lead Time: how many days between booking and appointment. Most bookings happen between 0-2 days but some went up to 170 days so I applied a Log Transformation to squash the big numbers. Also, a flag was added for same day bookings, as most of these tend to show up to their appointment. 
+2.)Patient History: Has a patient skipped before? For each patient how many earlier appointments a person had and the number they skipped and calculated a past no-show rate (skipped ÷ earlier appointments). Only earlier appointments are used and not same day appointments since outcomes aren’t known yet; using them would leak the answer. A “Has history” flag separates new patients from returning patients who have never skipped, since both have a no-show rate of 0 . In the case of the dataset about 40% of patients have made a prior appointment. 
+3.)Age Groups: age was split into the following age groups. 0–12, 13–18, 19–30, 31–45, 46–60, 61–75, 76+. No shows vary much with age, the groups with the biggest no show percentage (25%) are the groups between 13-30. Each group is a one-hot (yes/no) column. 
+
+Gender, scholarship, hypertension, diabetes, alcoholism and handicap were included as yes/no features. SMSis used with lead time as most are done only to patients with +3 days of lead time.. Their effects are small. 
+
+Features tried and removed: Neibourhood made validation results worse reducing the AUC as it caused overfitting. Weekday was removed as it added nothing. 
+
 
 ## Modeling: three implementations, one model
 
