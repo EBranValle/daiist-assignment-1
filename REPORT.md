@@ -32,6 +32,15 @@ comparing scikit-learn, the manual PyTorch loop, and the standard
 torch.nn.Module/torch.optim workflow, on the same test set, against the
 naive baseline. Do the three agree? If not, why not?*
 
+| Model | ROC AUC | Avg precision | Log loss | Threshold | Calls | Precision | Recall | Cost / 1,000 appts |
+|---|---|---|---|---|---|---|---|---|
+| Naive baseline (predict train rate 21.1%) | 0.500 | 0.186 | 0.4822 | – | 0% | – | 0% | 4,646 |
+| scikit-learn | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
+| PyTorch manual loop | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
+| PyTorch nn.Module + optim | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
+| Rule: call everyone | – | – | – | – | 100% | 18.6% | 100% | 5,253 |
+| Rule: call if booked 3+ days ahead | – | – | – | – | 52.9% | 27.0% | 76.8% | 4,634 |
+
 ## Limitations & next steps
 
 *Real limitations you found, and concretely how you'd address each one with
