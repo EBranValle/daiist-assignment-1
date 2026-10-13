@@ -4,8 +4,8 @@ Assignment 1 — Gradio dashboard for the appointment no-show models.
 Loads only what train.py saved in artifacts/ (the three trained models, the
 held-out test set and summary metrics); nothing is retrained here. Tabs:
 
-- Model comparison: test metrics, predicted-vs-actual (calibration), ROC,
-  per-appointment agreement between implementations, coefficients, loss curves.
+- Model comparison: test metrics, agreement between implementations,
+  predicted-vs-actual (calibration), loss curves, coefficients.
 - Distributions: feature and target distributions by outcome and split.
 - Threshold & cost: move the decision threshold and watch the confusion matrix
   and the cost of the reminder-call policy change.
@@ -19,7 +19,6 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import torch
-from sklearn.metrics import roc_curve
 
 from common import (ARTIFACTS, CALL_COST, CALL_EFFECT, MISSED_SLOT_COST,
                     build_standard_model, business_cost)
@@ -79,12 +78,8 @@ def metrics_table():
     rows = []
     for name, m in METRICS["test_results"].items():
         rows.append({"Model": name, "ROC AUC": m["roc_auc"], "Avg precision": m["avg_precision"],
-                     "Log loss": m["log_loss"], "Brier": m["brier"], "Threshold": m["threshold"],
+                     "Log loss": m["log_loss"], "Threshold": m["threshold"],
                      "Calls %": m["calls_pct"], "Precision": m["precision"], "Recall": m["recall"],
-                     "Cost / 1000 appts": m["cost_per_1000"]})
-    for name, m in METRICS["policies"].items():
-        rows.append({"Model": f"Rule: {name}", "Calls %": m["calls_pct"],
-                     "Precision": m["precision"], "Recall": m["recall"],
                      "Cost / 1000 appts": m["cost_per_1000"]})
     return pd.DataFrame(rows).round(4)
 
@@ -92,7 +87,7 @@ def metrics_table():
 def agreement_table():
     rows = [{"Compared with scikit-learn": name,
              "Max |prob diff|": a["max_abs_prob_diff"], "Mean |prob diff|": a["mean_abs_prob_diff"],
-             "Max |weight diff|": a["max_abs_weight_diff"], "Bias diff": a["bias_diff"]}
+             "Max |weight diff|": a["max_abs_weight_diff"]}
             for name, a in METRICS["agreement"].items()]
     return pd.DataFrame(rows).map(lambda v: f"{v:.2e}" if isinstance(v, float) else v)
 
@@ -117,50 +112,16 @@ def calibration_plot():
     return fig
 
 
-def roc_plot():
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Baseline (AUC 0.5)",
-                             line=dict(color="#9a9a96", width=1, dash="dash"), hoverinfo="skip"))
-    for name in MODEL_NAMES:
-        fpr, tpr, _ = roc_curve(Y_TEST, PROBS[name])
-        auc = METRICS["test_results"][name]["roc_auc"]
-        fig.add_trace(go.Scatter(x=fpr, y=tpr, mode="lines", name=f"{name} (AUC {auc:.4f})",
-                                 line=dict(width=2, **MODEL_STYLE[name]),
-                                 hovertemplate="FPR %{x:.3f}<br>TPR %{y:.3f}"))
-    fig.update_layout(title="ROC curve (test set)", xaxis_title="False positive rate",
-                      yaxis_title="True positive rate (recall)", **LAYOUT)
-    return fig
-
-
-def agreement_plot():
-    """Each test appointment: PyTorch probability vs scikit-learn probability."""
-    rng = np.random.default_rng(0)
-    idx = rng.choice(len(Y_TEST), size=min(3000, len(Y_TEST)), replace=False)
-    fig = go.Figure()
-    fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode="lines", name="Identical",
-                             line=dict(color="#9a9a96", width=1, dash="dash"), hoverinfo="skip"))
-    for name in MODEL_NAMES[1:]:
-        fig.add_trace(go.Scatter(
-            x=PROBS["scikit-learn"][idx], y=PROBS[name][idx], mode="markers", name=name,
-            marker=dict(size=8, color=MODEL_STYLE[name]["color"], opacity=0.5,
-                        line=dict(width=1, color="white")),
-            hovertemplate="sklearn %{x:.4f}<br>" + name + " %{y:.4f}"))
-    fig.update_layout(title="Per-appointment agreement with scikit-learn (3,000 test rows)",
-                      xaxis_title="scikit-learn probability", yaxis_title="PyTorch probability",
-                      **LAYOUT)
-    return fig
-
-
-def coefficient_plot(top_n=30):
+def coefficient_plot():
     names = METRICS["feature_names"]
     weights = {k: np.array(v) for k, v in METRICS["weights"].items()}
-    order = np.argsort(-np.abs(weights["scikit-learn"]))[:top_n][::-1]
+    order = np.argsort(-np.abs(weights["scikit-learn"]))[::-1]
     fig = go.Figure()
     for name in MODEL_NAMES:
         fig.add_trace(go.Bar(y=[names[i] for i in order], x=weights[name][order], name=name,
                              orientation="h", marker_color=MODEL_STYLE[name]["color"],
                              hovertemplate="%{y}: %{x:.4f}"))
-    fig.update_layout(title=f"Top {top_n} coefficients (standardised features; + = more likely no-show)",
+    fig.update_layout(title="Coefficients per implementation (standardised features; + = more likely no-show)",
                       xaxis_title="Coefficient (log-odds per 1 SD)", barmode="group",
                       bargap=0.25, bargroupgap=0.1, **{**LAYOUT, "height": 700})
     return fig
@@ -184,10 +145,8 @@ NUMERIC_BINS = {
                  ["same day", "1-2", "3-7", "8-14", "15-30", "31-60", "61+"]),
     "Age": ([-1, 12, 18, 30, 45, 60, 75, 101],
             ["0-12", "13-18", "19-30", "31-45", "46-60", "61-75", "76+"]),
-    "PriorAppts": ([-0.5, 0.5, 1.5, 2.5, 5.5, 100], ["0", "1", "2", "3-5", "6+"]),
     "PriorNoShowRate": ([-0.01, 0.0, 0.25, 0.5, 0.75, 1.0],
                         ["0 / none", "0-25%", "25-50%", "50-75%", "75-100%"]),
-    "SameDayAppts": ([0.5, 1.5, 2.5, 100], ["1", "2", "3+"]),
 }
 CATEGORICAL = ["Weekday", "Gender", "SMS_received", "Scholarship", "Hypertension",
                "Diabetes", "Alcoholism", "Handicap", "Neighbourhood"]
@@ -236,17 +195,6 @@ def distribution_plots(column, split):
     return fig_counts, fig_rate
 
 
-def target_plot():
-    rate = APPTS.groupby("Split")["NoShow"].agg(["mean", "size"]).reindex(["train", "val", "test"])
-    fig = go.Figure(go.Bar(x=rate.index, y=rate["mean"], marker_color="#eb6834",
-                           customdata=rate["size"], text=[f"{v:.1%}" for v in rate["mean"]],
-                           textposition="outside",
-                           hovertemplate="%{x}: %{y:.1%} no-show<br>n=%{customdata}"))
-    fig.update_layout(title="Target: no-show rate per time-based split", yaxis_tickformat=".0%",
-                      yaxis_title="No-show rate", yaxis_range=[0, 0.3], **LAYOUT)
-    return fig
-
-
 # ---------------------------------------------------------------- tab 3: threshold & cost
 
 THRESHOLD_GRID = np.round(np.arange(0.01, 1.0, 0.01), 2)
@@ -276,7 +224,6 @@ def threshold_view(model, threshold, call_cost, missed_cost, effect):
     current = business_cost(Y_TEST, call, **costs)
     nobody = business_cost(Y_TEST, np.zeros(len(Y_TEST)), **costs)
     everyone = business_cost(Y_TEST, np.ones(len(Y_TEST)), **costs)
-    best_t = THRESHOLD_GRID[int(np.argmin(curve))]
 
     fig_cost = go.Figure(go.Scatter(x=THRESHOLD_GRID, y=per_1000, mode="lines", name="Model policy",
                                     line=dict(width=2, color="#2a78d6"),
@@ -303,7 +250,6 @@ def threshold_view(model, threshold, call_cost, missed_cost, effect):
 
 Saving vs calling nobody: **{nobody - current:,.0f}** ({(nobody - current) / nobody:.1%}).
 Threshold chosen on validation (default costs): **{METRICS['thresholds'][model]:.2f}**.
-Best threshold on this test set for these costs (hindsight): {best_t:.2f}.
 Break-even probability for a call, call cost / (effect × missed-slot cost): {breakeven:.2f}.
 """
     return cm, fig_cost, summary
@@ -324,15 +270,12 @@ All models are loaded from `artifacts/`; nothing is retrained here.
 """)
 
     with gr.Tab("Model comparison"):
-        gr.Markdown("### Test-set results (models vs naive baseline and fixed calling rules)")
+        gr.Markdown("### Test-set results (three implementations vs naive baseline)")
         gr.Dataframe(metrics_table(), interactive=False)
         gr.Markdown("### Do the three implementations agree?")
         gr.Dataframe(agreement_table(), interactive=False)
         with gr.Row():
             gr.Plot(calibration_plot())
-            gr.Plot(roc_plot())
-        with gr.Row():
-            gr.Plot(agreement_plot())
             gr.Plot(loss_plot())
         gr.Plot(coefficient_plot())
 
@@ -343,7 +286,6 @@ All models are loaded from `artifacts/`; nothing is retrained here.
         with gr.Row():
             counts_plot = gr.Plot()
             rate_plot = gr.Plot()
-        gr.Plot(target_plot())
         for control in (column, split):
             control.change(distribution_plots, [column, split], [counts_plot, rate_plot])
         demo.load(distribution_plots, [column, split], [counts_plot, rate_plot])

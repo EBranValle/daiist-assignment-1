@@ -14,8 +14,8 @@ Steps:
 3. Split by AppointmentDay into train / validation / test.
 4. Train logistic regression three ways on the same standardised features:
    scikit-learn, a manual PyTorch loop, and nn.Module + torch.optim.
-5. Pick regularisation / learning rates and each model's threshold on the
-   validation set; report everything on the test set against naive baselines.
+5. Pick the regularisation strength and each model's threshold on the
+   validation set; report everything on the test set against a naive baseline.
 6. Save models and everything app.py needs to artifacts/.
 """
 
@@ -27,12 +27,10 @@ import pandas as pd
 import torch
 import torch.nn as nn
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (average_precision_score, brier_score_loss,
-                             log_loss, roc_auc_score)
+from sklearn.metrics import average_precision_score, log_loss, roc_auc_score
 from sklearn.preprocessing import StandardScaler
 
-from common import (ARTIFACTS, CALL_COST, CALL_EFFECT, DATA_PATH,
-                    MISSED_SLOT_COST, build_standard_model, business_cost)
+from common import ARTIFACTS, DATA_PATH, build_standard_model, business_cost
 
 SEED = 0
 VAL_START = pd.Timestamp("2016-05-24")   # train: Apr 29 – May 20
@@ -45,10 +43,10 @@ MIN_NEIGHBOURHOOD_COUNT = 100      # rarer neighbourhoods (in train) -> "OTHER"
 WEEKDAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
 
 C_GRID = [0.001, 0.01, 0.1, 1.0, 10.0]   # sklearn inverse regularisation strength
-MANUAL_LR_GRID = [0.1, 0.5, 1.0]
-MANUAL_EPOCHS = 3000
-STANDARD_LR_GRID = [0.003, 0.01, 0.03]
-STANDARD_EPOCHS = 1500
+# Learning rates picked once by trying a few values: both converge well within
+# these epochs (see the loss curves in the dashboard).
+MANUAL_LR, MANUAL_EPOCHS = 1.0, 3000
+STANDARD_LR, STANDARD_EPOCHS = 0.03, 1500
 
 
 # ---------------------------------------------------------------- data
@@ -140,11 +138,10 @@ def bce_loss(y_pred, y):
 
 
 def train_sklearn(X, y, C):
-    model = LogisticRegression(C=C, max_iter=10_000, tol=1e-8)
-    return model.fit(X, y)
+    return LogisticRegression(C=C, max_iter=10_000, tol=1e-8).fit(X, y)
 
 
-def train_manual(X, y, l2, lr, n_epochs=MANUAL_EPOCHS):
+def train_manual(X, y, l2, lr=MANUAL_LR, n_epochs=MANUAL_EPOCHS):
     """Session 5 style: raw tensors, autograd, hand-written gradient step.
 
     Loss = mean BCE + l2/2 * ||w||^2, which is scikit-learn's objective divided
@@ -167,12 +164,7 @@ def train_manual(X, y, l2, lr, n_epochs=MANUAL_EPOCHS):
     return w.detach(), b.detach(), history
 
 
-def predict_manual(w, b, X):
-    with torch.no_grad():
-        return torch.sigmoid(X @ w + b).numpy()
-
-
-def train_standard(X, y, l2, lr, n_epochs=STANDARD_EPOCHS):
+def train_standard(X, y, l2, lr=STANDARD_LR, n_epochs=STANDARD_EPOCHS):
     """Standard workflow: nn.Module + nn.BCELoss + torch.optim.Adam, same objective."""
     torch.manual_seed(SEED)
     model = build_standard_model(X.shape[1])
@@ -189,11 +181,6 @@ def train_standard(X, y, l2, lr, n_epochs=STANDARD_EPOCHS):
     return model, history
 
 
-def predict_standard(model, X):
-    with torch.no_grad():
-        return model(X).squeeze(-1).numpy()
-
-
 # ---------------------------------------------------------------- evaluation
 
 def best_threshold(y, prob):
@@ -206,30 +193,16 @@ def best_threshold(y, prob):
 def evaluate(y, prob, threshold):
     call = prob >= threshold
     tp = int((call & (y == 1)).sum())
-    fp = int((call & (y == 0)).sum())
-    fn = int((~call & (y == 1)).sum())
-    cost = business_cost(y, call)
     return {
         "roc_auc": roc_auc_score(y, prob),
         "avg_precision": average_precision_score(y, prob),
         "log_loss": log_loss(y, np.clip(prob, 1e-7, 1 - 1e-7)),
-        "brier": brier_score_loss(y, prob),
         "threshold": threshold,
         "calls_pct": float(call.mean() * 100),
-        "precision": tp / max(tp + fp, 1),
-        "recall": tp / max(tp + fn, 1),
-        "cost_per_1000": cost / len(y) * 1000,
+        "precision": tp / max(int(call.sum()), 1),
+        "recall": tp / max(int((y == 1).sum()), 1),
+        "cost_per_1000": business_cost(y, call) / len(y) * 1000,
     }
-
-
-def policy_row(y, call):
-    """Cost of a fixed calling rule (no probabilities) for the baseline rows."""
-    call = np.asarray(call, dtype=bool)
-    tp = int((call & (y == 1)).sum())
-    return {"calls_pct": float(call.mean() * 100),
-            "precision": tp / max(int(call.sum()), 1),
-            "recall": tp / max(int((y == 1).sum()), 1),
-            "cost_per_1000": business_cost(y, call) / len(y) * 1000}
 
 
 FEATURE_GROUPS = {
@@ -244,7 +217,6 @@ FEATURE_GROUPS = {
     "neighbourhood": lambda f: f.startswith("hood_"),
 }
 
-
 # Dropped from the final model because of the ablation below: leaving either
 # out improves validation log loss (the ~60 neighbourhood dummies overfit the
 # training weeks; weekday carries almost no signal). Re-check if data changes.
@@ -254,12 +226,10 @@ DROPPED_GROUPS = ("neighbourhood", "weekday")
 def feature_ablation(X_train, y_train, X_val, y_val, feature_names, C=1.0):
     """Validation AUC / log loss when each candidate feature group is left out (sklearn)."""
     def score(cols):
-        model = train_sklearn(X_train[:, cols], y_train, C)
-        prob = model.predict_proba(X_val[:, cols])[:, 1]
+        prob = train_sklearn(X_train[:, cols], y_train, C).predict_proba(X_val[:, cols])[:, 1]
         return {"val_roc_auc": roc_auc_score(y_val, prob), "val_log_loss": log_loss(y_val, prob)}
 
-    all_cols = list(range(len(feature_names)))
-    rows = {"all features": score(all_cols)}
+    rows = {"all features": score(list(range(len(feature_names))))}
     for group, in_group in FEATURE_GROUPS.items():
         rows[f"without {group}"] = score([i for i, f in enumerate(feature_names) if not in_group(f)])
     print("\nFeature-group ablation (validation set):")
@@ -268,13 +238,11 @@ def feature_ablation(X_train, y_train, X_val, y_val, feature_names, C=1.0):
     # The SMS confounding: its sign flips when lead time is left out.
     no_lead = [i for i, f in enumerate(feature_names) if not FEATURE_GROUPS["lead time"](f)]
     model = train_sklearn(X_train[:, no_lead], y_train, C)
-    sms_coef = float(model.coef_.ravel()[[feature_names[i] for i in no_lead].index("sms_received")])
+    sms_coef = model.coef_.ravel()[[feature_names[i] for i in no_lead].index("sms_received")]
     print(f"SMS coefficient without lead-time features: {sms_coef:+.3f}\n")
-    return rows, sms_coef
 
 
 def main():
-    np.random.seed(SEED)
     ARTIFACTS.mkdir(exist_ok=True)
 
     df = add_patient_history(load_and_clean())
@@ -290,16 +258,14 @@ def main():
     candidates = build_features(df, neighbourhoods)
     y_all = df["NoShow"].to_numpy()
     y_train, y_val, y_test = y_all[train_mask], y_all[val_mask], y_all[test_mask]
-    n_train = len(y_train)
 
     # Which feature groups earn their place? Judged on validation, never test.
     X_cand = StandardScaler().fit(candidates[train_mask]).transform(candidates).astype("float32")
-    ablation, sms_without_lead = feature_ablation(
-        X_cand[train_mask], y_train, X_cand[val_mask], y_val, candidates.columns.tolist())
+    feature_ablation(X_cand[train_mask], y_train, X_cand[val_mask], y_val,
+                     candidates.columns.tolist())
 
-    kept = [c for c in candidates.columns
-            if not any(FEATURE_GROUPS[g](c) for g in DROPPED_GROUPS)]
-    features = candidates[kept]
+    features = candidates[[c for c in candidates.columns
+                           if not any(FEATURE_GROUPS[g](c) for g in DROPPED_GROUPS)]]
     feature_names = features.columns.tolist()
     print(f"{candidates.shape[1]} candidate features, {len(feature_names)} kept "
           f"(dropped: {', '.join(DROPPED_GROUPS)}).")
@@ -316,76 +282,42 @@ def main():
         print(f"sklearn C={C:<6}  val log loss {val_scores[C]:.5f}")
     best_C = min(val_scores, key=val_scores.get)
     sk_model = train_sklearn(X_train, y_train, best_C)
-    l2 = 1.0 / (best_C * n_train)   # the same penalty, rescaled for a mean loss
+    l2 = 1.0 / (best_C * len(y_train))   # the same penalty, rescaled for a mean loss
     print(f"-> C={best_C} (l2={l2:.2e} for the PyTorch versions)")
 
-    # Same regularisation for PyTorch; only the learning rate is tuned.
+    # 2) Manual PyTorch loop and 3) standard nn.Module + torch.optim, same objective.
     Xt_train, yt_train = torch.tensor(X_train), torch.tensor(y_train, dtype=torch.float32)
-    Xt_val, Xt_test = torch.tensor(X_val), torch.tensor(X_test)
+    w, b, manual_hist = train_manual(Xt_train, yt_train, l2)
+    std_model, standard_hist = train_standard(Xt_train, yt_train, l2)
 
-    # 2) Manual PyTorch loop.
-    manual_runs = {}
-    for lr in MANUAL_LR_GRID:
-        w, b, hist = train_manual(Xt_train, yt_train, l2, lr)
-        manual_runs[lr] = (w, b, hist, log_loss(y_val, predict_manual(w, b, Xt_val)))
-        print(f"manual   lr={lr:<5}  val log loss {manual_runs[lr][3]:.5f}")
-    manual_lr = min(manual_runs, key=lambda k: manual_runs[k][3])
-    w, b, manual_hist, _ = manual_runs[manual_lr]
+    def predict_all(X):
+        Xt = torch.tensor(X)
+        with torch.no_grad():
+            return {"scikit-learn": sk_model.predict_proba(X)[:, 1],
+                    "PyTorch manual": torch.sigmoid(Xt @ w + b).numpy(),
+                    "PyTorch nn/optim": std_model(Xt).squeeze(-1).numpy()}
 
-    # 3) Standard nn.Module + torch.optim.
-    standard_runs = {}
-    for lr in STANDARD_LR_GRID:
-        model, hist = train_standard(Xt_train, yt_train, l2, lr)
-        standard_runs[lr] = (model, hist, log_loss(y_val, predict_standard(model, Xt_val)))
-        print(f"standard lr={lr:<5}  val log loss {standard_runs[lr][2]:.5f}")
-    standard_lr = min(standard_runs, key=lambda k: standard_runs[k][2])
-    std_model, standard_hist, _ = standard_runs[standard_lr]
+    val_prob, test_prob = predict_all(X_val), predict_all(X_test)
 
-    # Probabilities on validation (threshold choice) and test (reporting).
-    val_prob = {
-        "scikit-learn": sk_model.predict_proba(X_val)[:, 1],
-        "PyTorch manual": predict_manual(w, b, Xt_val),
-        "PyTorch nn/optim": predict_standard(std_model, Xt_val),
-    }
-    test_prob = {
-        "scikit-learn": sk_model.predict_proba(X_test)[:, 1],
-        "PyTorch manual": predict_manual(w, b, Xt_test),
-        "PyTorch nn/optim": predict_standard(std_model, Xt_test),
-    }
-
-    # Naive baseline: predict the training no-show rate for everyone.
-    base_rate = float(y_train.mean())
-    results = {"Baseline (train rate)": evaluate(y_test, np.full(len(y_test), base_rate), 0.5)}
+    # Naive baseline: predict the training no-show rate for everyone (nobody gets called).
+    results = {"Baseline (train rate)":
+               evaluate(y_test, np.full(len(y_test), y_train.mean()), 0.5)}
     thresholds = {}
     for name in test_prob:
-        thresholds[name] = best_threshold(y_val, val_prob[name])
+        thresholds[name] = best_threshold(y_val, val_prob[name])   # chosen on validation
         results[name] = evaluate(y_test, test_prob[name], thresholds[name])
-    policies = {
-        "Call nobody": policy_row(y_test, np.zeros(len(y_test))),
-        "Call everyone": policy_row(y_test, np.ones(len(y_test))),
-        "Call if booked 3+ days ahead": policy_row(y_test, df.loc[test_mask, "LeadDays"] >= 3),
-    }
-
-    table = pd.DataFrame(results).T
     print("\nTest set results:")
-    print(table.round(4).to_string())
-    print("\nFixed calling rules on the test set:")
-    print(pd.DataFrame(policies).T.round(4).to_string())
+    print(pd.DataFrame(results).T.round(4).to_string())
 
     # Do the three implementations agree?
-    sk_w = sk_model.coef_.ravel()
-    weights = {"scikit-learn": sk_w, "PyTorch manual": w.numpy(),
+    weights = {"scikit-learn": sk_model.coef_.ravel(), "PyTorch manual": w.numpy(),
                "PyTorch nn/optim": std_model[0].weight.detach().numpy().ravel()}
-    biases = {"scikit-learn": float(sk_model.intercept_[0]), "PyTorch manual": float(b.item()),
-              "PyTorch nn/optim": float(std_model[0].bias.item())}
     agreement = {}
     for name in ["PyTorch manual", "PyTorch nn/optim"]:
-        agreement[name] = {
-            "max_abs_prob_diff": float(np.abs(test_prob[name] - test_prob["scikit-learn"]).max()),
-            "mean_abs_prob_diff": float(np.abs(test_prob[name] - test_prob["scikit-learn"]).mean()),
-            "max_abs_weight_diff": float(np.abs(weights[name] - sk_w).max()),
-            "bias_diff": biases[name] - biases["scikit-learn"],
-        }
+        diff = np.abs(test_prob[name] - test_prob["scikit-learn"])
+        agreement[name] = {"max_abs_prob_diff": float(diff.max()),
+                           "mean_abs_prob_diff": float(diff.mean()),
+                           "max_abs_weight_diff": float(np.abs(weights[name] - weights["scikit-learn"]).max())}
     print("\nAgreement with scikit-learn on the test set:")
     print(pd.DataFrame(agreement).T.to_string())
 
@@ -393,36 +325,23 @@ def main():
     joblib.dump(sk_model, ARTIFACTS / "sklearn_logreg.joblib")
     torch.save({"w": w, "b": b}, ARTIFACTS / "manual_torch.pt")
     torch.save(std_model.state_dict(), ARTIFACTS / "standard_torch.pt")
-    joblib.dump({"scaler": scaler, "neighbourhoods": neighbourhoods,
-                 "feature_names": feature_names}, ARTIFACTS / "preprocess.joblib")
-    np.savez_compressed(ARTIFACTS / "test_set.npz", X=X_test, y=y_test,
-                        lead_days=df.loc[test_mask, "LeadDays"].to_numpy())
+    np.savez_compressed(ARTIFACTS / "test_set.npz", X=X_test, y=y_test)
 
-    display_cols = ["Split", "AppointmentDay", "NoShow", "LeadDays", "Age", "AgeBand",
-                    "Gender", "Weekday", "Neighbourhood", "SMS_received", "Scholarship",
-                    "Hypertension", "Diabetes", "Alcoholism", "Handicap",
-                    "PriorAppts", "PriorNoShowRate", "SameDayAppts"]
+    display_cols = ["Split", "NoShow", "LeadDays", "Age", "Gender", "Weekday",
+                    "Neighbourhood", "SMS_received", "Scholarship", "Hypertension",
+                    "Diabetes", "Alcoholism", "Handicap", "PriorNoShowRate"]
     df[display_cols].to_csv(ARTIFACTS / "appointments.csv", index=False)
 
     with open(ARTIFACTS / "metrics.json", "w") as f:
         json.dump({
             "test_results": results,
-            "policies": policies,
             "thresholds": thresholds,
             "agreement": agreement,
-            "ablation": ablation,
-            "sms_coef_without_lead_time": sms_without_lead,
             "weights": {k: v.tolist() for k, v in weights.items()},
-            "biases": biases,
             "feature_names": feature_names,
-            "hyperparameters": {"C": best_C, "l2": l2, "manual_lr": manual_lr,
-                                "manual_epochs": MANUAL_EPOCHS, "standard_lr": standard_lr,
-                                "standard_epochs": STANDARD_EPOCHS,
-                                "sklearn_val_log_loss": {str(k): v for k, v in val_scores.items()}},
+            "hyperparameters": {"C": best_C, "l2": l2, "manual_lr": MANUAL_LR,
+                                "standard_lr": STANDARD_LR},
             "loss_history": {"PyTorch manual": manual_hist, "PyTorch nn/optim": standard_hist},
-            "costs": {"call_cost": CALL_COST, "missed_slot_cost": MISSED_SLOT_COST,
-                      "call_effect": CALL_EFFECT},
-            "base_rate_train": base_rate,
         }, f, indent=2)
     print(f"\nSaved models and artifacts to {ARTIFACTS}/")
 
