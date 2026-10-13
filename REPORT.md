@@ -44,8 +44,20 @@ The three models all agree. The results are virtually identical from one another
 
 ## Limitations & next steps
 
-*Real limitations you found, and concretely how you'd address each one with
-more time or data — not generic hedging.*
+The no show rate drifts over time. 
+The rate falls from 21% to 19.4% in the validation set and 18.6% in the test. This may make the models overestimate risks. For this reason I would retrain regularly the models the more weeks could come out. 
+
+For this project teh cost assumptions are made up.
+The costs applied to the models and the call effectives are assumptions. So with this in mind each model saves only about 136 dollars per 1000 appointments as explained in the results. For a real world scenario I would get the real costs in order to make it a real business model solution. 
+
+The SMS is not casual
+In the models the SMS coefficient flips depending on whether lead time is included. Because SMS was sent to only booking made 3 days ahead and not at random. Therefore the results cant provide clear evidence that SMS works. A random test would give an unbiased estimate of the effect. 
+
+Patient history starts from zero.
+The daset covers only 6 weeks of time. Early training rows have almost no history while test rows at the end of the window have more. This could have an impact on results and pior cancelation histories. Therefore its important to have a full history of every patient in the dataset.
+
+The models only find only about half the no shows. 
+All the models have essentially the same results. The data lacks more field that probably drive a patient to do a no show. Like time of day, distance to clinic, weather and appointment type. This sort of data could help narrow down results to also help it be a better business model solution. 
 
 ## Generative AI use disclosure
 
