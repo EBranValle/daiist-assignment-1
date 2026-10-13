@@ -38,8 +38,6 @@ naive baseline. Do the three agree? If not, why not?*
 | scikit-learn | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
 | PyTorch manual loop | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
 | PyTorch nn.Module + optim | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
-| Rule: call everyone | – | – | – | – | 100% | 18.6% | 100% | 5,253 |
-| Rule: call if booked 3+ days ahead | – | – | – | – | 52.9% | 27.0% | 76.8% | 4,634 |
 
 ## Limitations & next steps
 
