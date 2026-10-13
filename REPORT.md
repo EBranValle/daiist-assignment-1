@@ -76,7 +76,9 @@ Generative AI use disclosure
 I used Claude (Anthropic’s AI assistant, via Claude Code) in this assignment:
 
 Code: Claude wrote the code in train.py, app.py and common.py: the data cleaning, the feature engineering with suggestions from my part, recommended the time-based split, the three logistic regression implementations (scikit-learn, manual PyTorch loop, nn.Module + torch.optim), the evaluation, and the Gradio dashboard. 
+
 Design choices: Claude proposed the features, the removal of neighbourhood and weekday based on the validation ablation, and the cost-based threshold. 
+
 Understanding: Claude explained the pipeline, the results and the concepts to me (threshold, precision/recall, Simpson’s paradox, why the three implementations agree). I wrote the text of this report myself; Claude checked my drafts for factual accuracy. 
 
 I ran the pipeline and the dashboard myself, and the numbers in this report come from my run and checks.
