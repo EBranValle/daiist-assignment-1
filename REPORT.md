@@ -38,12 +38,18 @@ naive baseline. Do the three agree? If not, why not?*
 | Manual PyTorch loop | Gradient descent written by hand: predict, compute loss, backprop, update, reset | 3,000 epochs, learning rate 1.0 |
 | Standard PyTorch | `nn.Linear` + `nn.Sigmoid`, trained with the Adam optimiser | 1,500 epochs, learning rate 0.03 |
 
+
 | Model | ROC AUC | Avg precision | Log loss | Threshold | Calls | Precision | Recall | Cost / 1,000 appts |
 |---|---|---|---|---|---|---|---|---|
-| Naive baseline (predict train rate 21.1%) | 0.500 | 0.186 | 0.4822 | – | 0% | – | 0% | 4,646 |
-| scikit-learn | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
-| PyTorch manual loop | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
-| PyTorch nn.Module + optim | 0.7285 | 0.336 | 0.4269 | 0.30 | 29.2% | 32.9% | 51.7% | 4,511 |
+| Naive baseline (predict train rate 21.1%) | 0.5000 | 0.1859 | 0.4822 | – | 0.0% | – | 0.0% | 4,646.43 |
+| scikit-learn | 0.7285 | 0.3361 | 0.4269 | 0.30 | 29.15% | 32.88% | 51.58% | 4,510.49 |
+| PyTorch manual loop | 0.7285 | 0.3361 | 0.4269 | 0.30 | 29.25% | 32.86% | 51.71% | 4,510.61 |
+| PyTorch nn.Module + optim | 0.7285 | 0.3361 | 0.4269 | 0.30 | 29.25% | 32.86% | 51.71% | 4,510.61 |
+
+| Compared with scikit-learn | Max abs. probability diff | Mean abs. probability diff | Max abs. weight diff |
+|---|---|---|---|
+| PyTorch manual loop | 0.000621 | 0.000062 | 0.000407 |
+| PyTorch nn.Module + optim | 0.000621 | 0.000062 | 0.000407 |
 
 ## Limitations & next steps
 
