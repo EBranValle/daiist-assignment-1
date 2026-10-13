@@ -32,6 +32,12 @@ comparing scikit-learn, the manual PyTorch loop, and the standard
 torch.nn.Module/torch.optim workflow, on the same test set, against the
 naive baseline. Do the three agree? If not, why not?*
 
+| Implementation | How it works | Settings |
+|---|---|---|
+| scikit-learn | `LogisticRegression().fit()` finds the weights automatically | C = 10, tuned on validation (all C ≥ 0.1 scored the same) |
+| Manual PyTorch loop | Gradient descent written by hand: predict, compute loss, backprop, update, reset | 3,000 epochs, learning rate 1.0 |
+| Standard PyTorch | `nn.Linear` + `nn.Sigmoid`, trained with the Adam optimiser | 1,500 epochs, learning rate 0.03 |
+
 | Model | ROC AUC | Avg precision | Log loss | Threshold | Calls | Precision | Recall | Cost / 1,000 appts |
 |---|---|---|---|---|---|---|---|---|
 | Naive baseline (predict train rate 21.1%) | 0.500 | 0.186 | 0.4822 | – | 0% | – | 0% | 4,646 |
