@@ -1,6 +1,6 @@
 # Assignment 1 Report
 
-- **Name**: Edgar Andres Bran Valle
+- **Name**: Edgar Andrès Bran Valle
 - **Student ID**: 18789
 - **Email**: ebran.ieu2022@student.ie.edu
 - **Group**: BBADBA 5B 
